@@ -1,0 +1,57 @@
+package de.syntax_institut.androidabschlussprojekt.login.data.service
+
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.tasks.await
+
+class AuthenticationService {
+
+    private val auth = FirebaseAuth.getInstance()
+
+    val userId: Flow<String?> = callbackFlow {
+        val authStateListener = FirebaseAuth.AuthStateListener { auth ->
+            trySend(auth.currentUser?.uid)
+        }
+        auth.addAuthStateListener(authStateListener)
+        awaitClose{ auth.removeAuthStateListener(authStateListener) }
+    }.distinctUntilChanged()
+
+    val isSignedIn: Flow<Boolean> = userId.map { it != null }.distinctUntilChanged()
+
+    suspend fun signInWithGoogle(token: String): FirebaseUser? {
+        val credential = GoogleAuthProvider.getCredential(token, null)
+        val authResult = auth.signInWithCredential(credential).await()
+        return authResult.user
+    }
+
+    suspend fun registerWithEmail(email: String, password: String): FirebaseUser? {
+        val authResult = auth.createUserWithEmailAndPassword(email, password).await()
+        return authResult.user
+    }
+
+    suspend fun signInWithEmail(email: String, password: String): FirebaseUser? {
+        val authResult = auth.signInWithEmailAndPassword(email, password).await()
+        return authResult.user
+    }
+
+    fun signOut() {
+        auth.signOut()
+    }
+
+    suspend fun deleteAccount(): Boolean {
+        val user = FirebaseAuth.getInstance().currentUser
+        return try {
+            user?.delete()?.await()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+}
